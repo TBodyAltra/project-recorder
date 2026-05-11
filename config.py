@@ -43,10 +43,10 @@ PRESETS = {
         "llm_model": "gpt-4o",
     },
     "minimax": {
-        "vision_base_url": "https://api.minimax.chat/v1",
+        "vision_base_url": "https://api.minimax.io/v1",
         "vision_model": "MiniMax-VL-01",
-        "llm_base_url": "https://api.minimax.chat/v1",
-        "llm_model": "MiniMax-Text-01",
+        "llm_base_url": "https://api.minimax.io/v1",
+        "llm_model": "MiniMax-M2.7-highspeed",
     },
     "siliconflow": {
         "vision_base_url": "https://api.siliconflow.cn/v1",
