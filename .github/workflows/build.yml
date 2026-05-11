@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,6 +19,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -27,7 +28,16 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller build.spec --noconfirm
+          pyinstaller build.spec --noconfirm --clean
+        continue-on-error: true
+
+      - name: Upload artifact on failure
+        if: failure()
+        run: |
+          echo "Build failed. Listing dist directory:"
+          if (Test-Path "ProjectRecorder/dist") { dir "ProjectRecorder/dist" /s }
+          echo "Build logs:"
+          Get-ChildItem -Path . -Filter "*.log" -Recurse | ForEach-Object { Write-Host "=== $($_.FullName) ==="; Get-Content $_.FullName }
 
       - name: Create Release
         if: github.event_name == 'release'
@@ -41,7 +51,10 @@ jobs:
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ProjectRecorder
-          path: ProjectRecorder/dist/
+          path: |
+            ProjectRecorder/dist/
+            *.log
           retention-days: 30

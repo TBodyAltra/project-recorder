@@ -198,12 +198,17 @@ class ProjectRecorderApp(ctk.CTk):
                     include_audio=self.include_audio.get()
                 )
             else:
-                window_idx = self.window_optionmenu.cget("variable")
+                # Find selected window index
+                selected_title = self.selected_window.get()
                 wins = list_windows()
-                if wins:
-                    hwnd = wins[self.selected_window.get()]["hwnd"]
+                selected_hwnd = None
+                for w in wins:
+                    if w['title'][:50] == selected_title:
+                        selected_hwnd = w['hwnd']
+                        break
+                if selected_hwnd:
                     self.recording_path = self.recorder.record_window(
-                        hwnd=hwnd,
+                        hwnd=selected_hwnd,
                         include_audio=self.include_audio.get()
                     )
 
