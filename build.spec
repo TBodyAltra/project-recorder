@@ -2,28 +2,24 @@
 
 import sys
 import os
-from pathlib import Path
 
-blockcipher = None  # Remove encryption for now
+blockcipher = None
 
 a = Analysis(
     ['main.py'],
-    pathex=[str(Path(__file__).parent)],
+    pathex=[os.getcwd()],
     binaries=[],
-    datas=[
-        # Include Whisper model files - we'll download at runtime
-    ],
+    datas=[],
     hiddenimports=[
         'customtkinter',
         'whisper',
         'openai',
         'PIL',
         'PIL._tkinter_finder',
-        'ffmpeg',
-        'ffmpeg.python',
         'numpy',
         'torch',
         'torch._utils',
+        'audioop',
     ],
     hookspath=[],
     hooksconfig={},
@@ -34,8 +30,6 @@ a = Analysis(
         'IPython',
         'notebook',
         'pandas',
-        'matplotlib',
-        'tkinter',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -55,7 +49,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # No console window
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
