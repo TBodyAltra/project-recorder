@@ -1,0 +1,6 @@
+customtkinter
+pillow
+ffmpeg-python
+openai-whisper
+openai
+requests
