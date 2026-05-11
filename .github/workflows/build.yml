@@ -31,13 +31,19 @@ jobs:
           pyinstaller build.spec --noconfirm --clean
         continue-on-error: true
 
-      - name: Upload artifact on failure
-        if: failure()
+      - name: Debug dist directory
         run: |
-          echo "Build failed. Listing dist directory:"
-          if (Test-Path "ProjectRecorder/dist") { dir "ProjectRecorder/dist" /s }
-          echo "Build logs:"
-          Get-ChildItem -Path . -Filter "*.log" -Recurse | ForEach-Object { Write-Host "=== $($_.FullName) ==="; Get-Content $_.FullName }
+          if (Test-Path "ProjectRecorder/dist") {
+            Write-Host "=== DIST DIRECTORY CONTENTS ==="
+            Get-ChildItem "ProjectRecorder/dist" -Recurse | Format-Table FullName, Length
+            Write-Host "Total files: $((Get-ChildItem 'ProjectRecorder/dist' -Recurse).Count)"
+          } else {
+            Write-Host "ProjectRecorder/dist does NOT exist!"
+            Write-Host "=== CURRENT DIRECTORY ==="
+            Get-ChildItem . | Format-Table Name
+            Write-Host "=== Checking for any .exe ==="
+            Get-ChildItem . -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue | Format-Table FullName
+          }
 
       - name: Create Release
         if: github.event_name == 'release'
@@ -51,10 +57,7 @@ jobs:
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: ProjectRecorder
-          path: |
-            ProjectRecorder/dist/
-            *.log
+          path: ProjectRecorder/dist/
           retention-days: 30
