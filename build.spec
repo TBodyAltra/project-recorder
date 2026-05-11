@@ -1,30 +1,29 @@
-"""
-PyInstaller build spec for Project Recorder.
-"""
+# -*- mode: python ; python-indent: 2 -*-
 
 import sys
 import os
 from pathlib import Path
 
-blockcipher = 'kxu'
+blockcipher = None  # Remove encryption for now
 
 a = Analysis(
     ['main.py'],
     pathex=[str(Path(__file__).parent)],
-    binaries=[
-        # Include ffmpeg if we bundle it
-    ],
+    binaries=[],
     datas=[
-        # Include any additional assets
+        # Include Whisper model files - we'll download at runtime
     ],
     hiddenimports=[
         'customtkinter',
         'whisper',
         'openai',
         'PIL',
+        'PIL._tkinter_finder',
         'ffmpeg',
         'ffmpeg.python',
         'numpy',
+        'torch',
+        'torch._utils',
     ],
     hookspath=[],
     hooksconfig={},
@@ -35,6 +34,8 @@ a = Analysis(
         'IPython',
         'notebook',
         'pandas',
+        'matplotlib',
+        'tkinter',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -60,7 +61,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # TODO: Add icon
+    icon=None,
 )
 
 coll = COLLECT(
