@@ -10,6 +10,12 @@ import time
 from pathlib import Path
 from openai import OpenAI
 
+# Import config
+from config import (
+    VISION_API_KEY, VISION_BASE_URL, VISION_MODEL,
+    LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
+)
+
 
 def extract_key_frames(video_path, output_dir, interval_seconds=10, max_frames=20):
     """
@@ -56,15 +62,33 @@ def extract_key_frames(video_path, output_dir, interval_seconds=10, max_frames=2
     return frame_paths
 
 
-def describe_frame(image_path, client, detail="high"):
+def get_vision_client():
+    """Get OpenAI-compatible client for Vision API."""
+    kwargs = {"api_key": VISION_API_KEY} if VISION_API_KEY else {}
+    if VISION_BASE_URL:
+        kwargs["base_url"] = VISION_BASE_URL
+    return OpenAI(**kwargs)
+
+
+def get_llm_client():
+    """Get OpenAI-compatible client for LLM API."""
+    kwargs = {"api_key": LLM_API_KEY} if LLM_API_KEY else {}
+    if LLM_BASE_URL:
+        kwargs["base_url"] = LLM_BASE_URL
+    return OpenAI(**kwargs)
+
+
+def describe_frame(image_path, client, model=None):
     """
     Use Vision AI to describe a single frame.
     """
     with open(image_path, 'rb') as f:
         image_data = f.read()
 
+    model = model or VISION_MODEL
+
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model=model,
         messages=[
             {
                 "role": "user",
@@ -72,7 +96,7 @@ def describe_frame(image_path, client, detail="high"):
                     {
                         "type": "image",
                         "image_bytes": image_data,
-                        "detail": detail
+                        "detail": "high"
                     },
                     {
                         "type": "text",
@@ -96,14 +120,6 @@ def describe_frame(image_path, client, detail="high"):
 def generate_project_brief(transcription, frame_descriptions, project_name=None):
     """
     Combine transcription and visual analysis into a structured project brief.
-
-    Args:
-        transcription: Whisper output dict with 'text' and 'segments'
-        frame_descriptions: List of (timestamp, description) tuples
-        project_name: Optional project name override
-
-    Returns:
-        Markdown-formatted project brief string
     """
     # Build context for LLM
     context_parts = []
@@ -123,8 +139,8 @@ def generate_project_brief(transcription, frame_descriptions, project_name=None)
 
     context = "\n\n".join(context_parts)
 
-    # Use OpenAI to generate structured brief
-    client = OpenAI()
+    # Use LLM to generate structured brief
+    client = get_llm_client()
 
     prompt = f"""你是一个资深技术顾问，需要根据以下录制内容生成一份项目初始化文档。
 
@@ -179,7 +195,7 @@ def generate_project_brief(transcription, frame_descriptions, project_name=None)
 请只输出上述格式的文档内容，不要有其他解释。"""
 
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model=LLM_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=2000
     )
@@ -195,8 +211,9 @@ def generate_project_brief(transcription, frame_descriptions, project_name=None)
 
 
 class ProjectAnalyzer:
-    def __init__(self, openai_api_key=None):
-        self.client = OpenAI(api_key=openai_api_key) if openai_api_key else OpenAI()
+    def __init__(self):
+        self.vision_client = get_vision_client()
+        self.llm_client = get_llm_client()
 
     def analyze_recording(self, video_path, transcription, output_dir=None, frame_interval=10):
         """
@@ -217,10 +234,9 @@ class ProjectAnalyzer:
         frame_descriptions = []
         for i, frame_path in enumerate(frames):
             print(f"  Analyzing frame {i+1}/{len(frames)}...")
-            # Extract timestamp from filename
             ts = int(Path(frame_path).stem.split('_')[1]) if '_' in Path(frame_path).stem else i * frame_interval
             try:
-                desc = describe_frame(frame_path, self.client)
+                desc = describe_frame(frame_path, self.vision_client, VISION_MODEL)
                 frame_descriptions.append((ts, desc))
             except Exception as e:
                 print(f"  Error analyzing frame {i+1}: {e}")
@@ -235,3 +251,5 @@ class ProjectAnalyzer:
 
 if __name__ == "__main__":
     print("Analyzer module ready.")
+    print(f"  Vision: {VISION_BASE_URL or 'OpenAI default'}/{VISION_MODEL}")
+    print(f"  LLM:    {LLM_BASE_URL or 'OpenAI default'}/{LLM_MODEL}")

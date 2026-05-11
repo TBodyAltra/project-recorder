@@ -11,12 +11,12 @@ import subprocess
 import time
 from pathlib import Path
 
-# Add parent dir to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from recorder import ScreenRecorder, list_screens, list_windows
 from transcriber import Transcriber
 from analyzer import ProjectAnalyzer
+from config import PRESETS, apply_preset, get_provider_display
 
 
 ctk.set_appearance_mode("dark")
@@ -28,7 +28,7 @@ class ProjectRecorderApp(ctk.CTk):
         super().__init__()
 
         self.title("Project Recorder - 项目录制助手")
-        self.geometry("700x600")
+        self.geometry("750x650")
 
         self.recorder = None
         self.recording_path = None
@@ -46,42 +46,65 @@ class ProjectRecorderApp(ctk.CTk):
         self.is_recording = False
         self.recording_start_time = None
 
+        # API settings
+        self.provider_var = ctk.StringVar(value="minimax")
+        self.vision_api_key = ctk.StringVar(value=os.environ.get("VISION_API_KEY", ""))
+        self.vision_base_url = ctk.StringVar(value=os.environ.get("VISION_BASE_URL", "https://api.minimax.chat/v1"))
+        self.vision_model = ctk.StringVar(value=os.environ.get("VISION_MODEL", "MiniMax-VL-01"))
+        self.llm_api_key = ctk.StringVar(value=os.environ.get("LLM_API_KEY", ""))
+        self.llm_base_url = ctk.StringVar(value=os.environ.get("LLM_BASE_URL", "https://api.minimax.chat/v1"))
+        self.llm_model = ctk.StringVar(value=os.environ.get("LLM_MODEL", "MiniMax-Text-01"))
+        self.whisper_model = ctk.StringVar(value=os.environ.get("WHISPER_MODEL", "base"))
+
         self._build_ui()
         self._refresh_sources()
+        self._load_config()
 
     def _build_ui(self):
         # Title
         title_label = ctk.CTkLabel(self, text="🎥 项目录制助手", font=ctk.CTkFont(size=24, weight="bold"))
         title_label.pack(pady=(20, 10))
 
-        # Main frame
-        main_frame = ctk.CTkFrame(self, corner_radius=15)
-        main_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        # Tabview
+        self.tabview = ctk.CTkTabview(self, corner_radius=15)
+        self.tabview.pack(fill="both", expand=True, padx=20, pady=(0, 10))
 
-        # === Capture Source Section ===
+        # Tab 1: Main
+        self.tab_main = self.tabview.add("录制")
+        self._build_main_tab()
+
+        # Tab 2: Settings
+        self.tab_settings = self.tabview.add("设置")
+        self._build_settings_tab()
+
+        # Status Bar
+        status_frame = ctk.CTkFrame(self, corner_radius=0, height=30)
+        status_frame.pack(fill="x", side="bottom")
+        self.status_label = ctk.CTkLabel(status_frame, textvariable=self.status_message, anchor="w")
+        self.status_label.pack(side="left", padx=10)
+
+    def _build_main_tab(self):
+        main_frame = ctk.CTkFrame(self.tab_main, corner_radius=15)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # === Capture Source ===
         source_frame = ctk.CTkFrame(main_frame, corner_radius=10)
         source_frame.pack(fill="x", padx=10, pady=10)
 
         ctk.CTkLabel(source_frame, text="📺 录制来源", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
 
-        # Radio: screen or window
         radio_frame = ctk.CTkFrame(source_frame, fg_color="transparent")
         radio_frame.pack(fill="x", padx=10)
 
-        self.radio_screen = ctk.CTkRadioButton(radio_frame, text="屏幕", variable=self.capture_mode, value="screen", command=self._on_capture_mode_change)
-        self.radio_window = ctk.CTkRadioButton(radio_frame, text="窗口", variable=self.capture_mode, value="window", command=self._on_capture_mode_change)
-        self.radio_screen.pack(side="left", padx=(0, 20))
-        self.radio_window.pack(side="left")
+        ctk.CTkRadioButton(radio_frame, text="屏幕", variable=self.capture_mode, value="screen", command=self._on_capture_mode_change).pack(side="left", padx=(0, 20))
+        ctk.CTkRadioButton(radio_frame, text="窗口", variable=self.capture_mode, value="window", command=self._on_capture_mode_change).pack(side="left")
 
-        # Screen selector
         self.screen_frame = ctk.CTkFrame(source_frame, fg_color="transparent")
         self.screen_frame.pack(fill="x", padx=10, pady=5)
         self.screen_optionmenu = ctk.CTkOptionMenu(self.screen_frame, variable=self.selected_screen, values=["检测中..."])
         self.screen_optionmenu.pack(side="left", fill="x", expand=True)
 
-        # Window selector
         self.window_frame = ctk.CTkFrame(source_frame, fg_color="transparent")
-        self.window_frame.pack(fill="x", padx=10, pady=5)
         self.window_optionmenu = ctk.CTkOptionMenu(self.window_frame, variable=self.selected_window, values=["检测中..."])
         self.window_optionmenu.pack(side="left", fill="x", expand=True)
         self.window_frame.pack_forget()
@@ -91,8 +114,7 @@ class ProjectRecorderApp(ctk.CTk):
         audio_frame.pack(fill="x", padx=10, pady=(0, 10))
 
         ctk.CTkLabel(audio_frame, text="🔊 音频选项", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=10, pady=(10, 5))
-        self.audio_checkbox = ctk.CTkCheckBox(audio_frame, text="包含系统音频（需安装虚拟音频驱动）", variable=self.include_audio)
-        self.audio_checkbox.pack(anchor="w", padx=10, pady=(0, 10))
+        ctk.CTkCheckBox(audio_frame, text="包含系统音频（需安装虚拟音频驱动如 VB-Audio Cable）", variable=self.include_audio).pack(anchor="w", padx=10, pady=(0, 10))
 
         # === Output Directory ===
         output_frame = ctk.CTkFrame(main_frame, corner_radius=10)
@@ -126,7 +148,7 @@ class ProjectRecorderApp(ctk.CTk):
         self.timer_label = ctk.CTkLabel(button_frame, text="00:00", font=ctk.CTkFont(size=20))
         self.timer_label.pack(side="left", padx=15)
 
-        # === Generate Brief Button ===
+        # === Generate Brief ===
         generate_frame = ctk.CTkFrame(main_frame, corner_radius=10)
         generate_frame.pack(fill="x", padx=10, pady=(0, 10))
 
@@ -136,11 +158,129 @@ class ProjectRecorderApp(ctk.CTk):
                                             command=self._generate_brief)
         self.generate_btn.pack(fill="x", padx=10, pady=(0, 10))
 
-        # === Status Bar ===
-        status_frame = ctk.CTkFrame(self, corner_radius=0, height=30)
-        status_frame.pack(fill="x", side="bottom")
-        self.status_label = ctk.CTkLabel(status_frame, textvariable=self.status_message, anchor="w")
-        self.status_label.pack(side="left", padx=10)
+    def _build_settings_tab(self):
+        settings_frame = ctk.CTkScrollableFrame(self.tab_settings, corner_radius=15)
+        settings_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # === Provider Preset ===
+        preset_frame = ctk.CTkFrame(settings_frame, corner_radius=10)
+        preset_frame.pack(fill="x", padx=5, pady=5)
+
+        ctk.CTkLabel(preset_frame, text="🔧 API 提供商预设", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", padx=10, pady=(10, 5))
+        ctk.CTkLabel(preset_frame, text="选择预设后自动填入对应配置，也可手动修改", text_color="gray").pack(anchor="w", padx=10)
+
+        preset_btn_frame = ctk.CTkFrame(preset_frame, fg_color="transparent")
+        preset_btn_frame.pack(fill="x", padx=10, pady=10)
+
+        providers = list(PRESETS.keys())
+        for p in providers:
+            ctk.CTkButton(preset_btn_frame, text=p.upper(), width=80,
+                          command=lambda x=p: self._apply_preset_gui(x)).pack(side="left", padx=2, pady=5)
+
+        # === Vision API ===
+        vision_frame = ctk.CTkFrame(settings_frame, corner_radius=10)
+        vision_frame.pack(fill="x", padx=5, pady=5)
+
+        ctk.CTkLabel(vision_frame, text="👁 Vision API（画面分析）", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", padx=10, pady=(10, 5))
+
+        ctk.CTkLabel(vision_frame, text="API Key").pack(anchor="w", padx=10)
+        ctk.CTkEntry(vision_frame, textvariable=self.vision_api_key, show="*", width=400).pack(fill="x", padx=10, pady=(0, 5))
+
+        ctk.CTkLabel(vision_frame, text="Base URL").pack(anchor="w", padx=10)
+        ctk.CTkEntry(vision_frame, textvariable=self.vision_base_url, width=400).pack(fill="x", padx=10, pady=(0, 5))
+
+        ctk.CTkLabel(vision_frame, text="模型名称").pack(anchor="w", padx=10)
+        ctk.CTkEntry(vision_frame, textvariable=self.vision_model, width=400).pack(fill="x", padx=10, pady=(0, 10))
+
+        # === LLM API ===
+        llm_frame = ctk.CTkFrame(settings_frame, corner_radius=10)
+        llm_frame.pack(fill="x", padx=5, pady=5)
+
+        ctk.CTkLabel(llm_frame, text="🤖 LLM API（文档生成）", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", padx=10, pady=(10, 5))
+
+        ctk.CTkLabel(llm_frame, text="API Key").pack(anchor="w", padx=10)
+        ctk.CTkEntry(llm_frame, textvariable=self.llm_api_key, show="*", width=400).pack(fill="x", padx=10, pady=(0, 5))
+
+        ctk.CTkLabel(llm_frame, text="Base URL").pack(anchor="w", padx=10)
+        ctk.CTkEntry(llm_frame, textvariable=self.llm_base_url, width=400).pack(fill="x", padx=10, pady=(0, 5))
+
+        ctk.CTkLabel(llm_frame, text="模型名称").pack(anchor="w", padx=10)
+        ctk.CTkEntry(llm_frame, textvariable=self.llm_model, width=400).pack(fill="x", padx=10, pady=(0, 10))
+
+        # === Whisper ===
+        whisper_frame = ctk.CTkFrame(settings_frame, corner_radius=10)
+        whisper_frame.pack(fill="x", padx=5, pady=5)
+
+        ctk.CTkLabel(whisper_frame, text="🎤 Whisper（本地转写，无需API）", font=ctk.CTkFont(weight="bold", size=14)).pack(anchor="w", padx=10, pady=(10, 5))
+
+        ctk.CTkLabel(whisper_frame, text="模型：tiny / base / small / medium / large（越大越准，越慢）").pack(anchor="w", padx=10)
+        ctk.CTkOptionMenu(whisper_frame, variable=self.whisper_model,
+                          values=["tiny", "base", "small", "medium", "large"]).pack(anchor="w", padx=10, pady=(5, 10))
+
+        # === Save Button ===
+        ctk.CTkButton(settings_frame, text="💾 保存配置到 .env",
+                       height=40, font=ctk.CTkFont(size=14, weight="bold"),
+                       command=self._save_config).pack(fill="x", padx=5, pady=10)
+
+    def _apply_preset_gui(self, name):
+        self.provider_var.set(name)
+        p = PRESETS.get(name, {})
+        self.vision_base_url.set(p.get("vision_base_url", ""))
+        self.vision_model.set(p.get("vision_model", ""))
+        self.llm_base_url.set(p.get("llm_base_url", ""))
+        self.llm_model.set(p.get("llm_model", ""))
+        self.status_message.set(f"已应用预设: {name.upper()}")
+
+    def _load_config(self):
+        """Load existing .env if present."""
+        env_file = Path(__file__).parent / ".env"
+        if env_file.exists():
+            with open(env_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if "=" in line and not line.startswith("#"):
+                        key, val = line.split("=", 1)
+                        key, val = key.strip(), val.strip()
+                        if key == "PROVIDER":
+                            self.provider_var.set(val)
+                            self._apply_preset_gui(val)
+                        elif key == "VISION_API_KEY":
+                            self.vision_api_key.set(val)
+                        elif key == "VISION_BASE_URL":
+                            self.vision_base_url.set(val)
+                        elif key == "VISION_MODEL":
+                            self.vision_model.set(val)
+                        elif key == "LLM_API_KEY":
+                            self.llm_api_key.set(val)
+                        elif key == "LLM_BASE_URL":
+                            self.llm_base_url.set(val)
+                        elif key == "LLM_MODEL":
+                            self.llm_model.set(val)
+                        elif key == "WHISPER_MODEL":
+                            self.whisper_model.set(val)
+
+    def _save_config(self):
+        env_file = Path(__file__).parent / ".env"
+        lines = [
+            f"# Provider preset: openai / minimax / deepseek / siliconflow / zhipuai\n",
+            f"PROVIDER={self.provider_var.get()}\n",
+            f"\n",
+            f"# Vision API\n",
+            f"VISION_API_KEY={self.vision_api_key.get()}\n",
+            f"VISION_BASE_URL={self.vision_base_url.get()}\n",
+            f"VISION_MODEL={self.vision_model.get()}\n",
+            f"\n",
+            f"# LLM API\n",
+            f"LLM_API_KEY={self.llm_api_key.get()}\n",
+            f"LLM_BASE_URL={self.llm_base_url.get()}\n",
+            f"LLM_MODEL={self.llm_model.get()}\n",
+            f"\n",
+            f"# Whisper\n",
+            f"WHISPER_MODEL={self.whisper_model.get()}\n",
+        ]
+        with open(env_file, "w") as f:
+            f.writelines(lines)
+        self.status_message.set("✅ 配置已保存到 .env，重启后生效")
 
     def _refresh_sources(self):
         def refresh():
@@ -175,8 +315,7 @@ class ProjectRecorderApp(ctk.CTk):
             self.window_frame.pack(fill="x", padx=10, pady=5)
 
     def _browse_output_dir(self):
-        # Simple folder input - could use filedialog
-        self.status_message.set("请在输入框中直接输入路径")
+        self.status_message.set("请在输入框中直接输入完整路径")
 
     def _toggle_recording(self):
         if not self.is_recording:
@@ -198,7 +337,6 @@ class ProjectRecorderApp(ctk.CTk):
                     include_audio=self.include_audio.get()
                 )
             else:
-                # Find selected window index
                 selected_title = self.selected_window.get()
                 wins = list_windows()
                 selected_hwnd = None
@@ -249,9 +387,8 @@ class ProjectRecorderApp(ctk.CTk):
                 self.status_message.set("正在转写音频...")
                 self.update()
 
-                # Lazy init
                 if not self.transcriber:
-                    self.transcriber = Transcriber("base")
+                    self.transcriber = Transcriber(self.whisper_model.get())
 
                 transcription = self.transcriber.transcribe(self.recording_path, language="zh")
 
@@ -268,7 +405,6 @@ class ProjectRecorderApp(ctk.CTk):
                     output_dir=frames_dir
                 )
 
-                # Save brief
                 brief_path = Path(self.recording_path).with_suffix(".md")
                 with open(brief_path, "w", encoding="utf-8") as f:
                     f.write(brief)
@@ -284,12 +420,10 @@ class ProjectRecorderApp(ctk.CTk):
 
 
 def check_ffmpeg():
-    """Check if FFmpeg is available."""
     result = subprocess.run(['where', 'ffmpeg'], capture_output=True, text=True, shell=True)
     if result.returncode != 0:
         print("WARNING: FFmpeg not found in PATH.")
-        print("Please install FFmpeg and add it to PATH, or place ffmpeg.exe in the bin/ folder.")
-        print("Download: https://ffmpeg.org/download.html")
+        print("Please install FFmpeg: choco install ffmpeg")
 
 
 if __name__ == "__main__":
